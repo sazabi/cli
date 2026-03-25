@@ -1,0 +1,27 @@
+{
+  "name": "@sazabiai/cli",
+  "version": "0.0.0",
+  "description": "The Sazabi CLI",
+  "license": "UNLICENSED",
+  "bin": {
+    "sazabi": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "homepage": "https://github.com/sazabi/sazabi-cli",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sazabi/sazabi-cli.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
+}
