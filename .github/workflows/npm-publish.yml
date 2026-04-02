@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 concurrency:
   group: npm-publish
@@ -28,7 +29,6 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Verify dist/index.js exists
         run: |
@@ -50,6 +50,16 @@ jobs:
           MANIFEST_VERSION=$(node -p "require('./release-manifest.json').version")
           if [ "$PKG_VERSION" != "$MANIFEST_VERSION" ]; then
             echo "::error::Version mismatch: package.json ($PKG_VERSION) != release-manifest.json ($MANIFEST_VERSION)"
+            exit 1
+          fi
+
+      - name: Verify package metadata matches this repository
+        run: |
+          EXPECTED_REPOSITORY_URL="git+https://github.com/${GITHUB_REPOSITORY}.git"
+          ACTUAL_REPOSITORY_URL=$(node -p "(() => { const repo = require('./package.json').repository; return typeof repo === 'string' ? repo : repo?.url || ''; })()")
+
+          if [ "$ACTUAL_REPOSITORY_URL" != "$EXPECTED_REPOSITORY_URL" ]; then
+            echo "::error::package.json repository.url must be ${EXPECTED_REPOSITORY_URL} for npm provenance/trusted publishing. Found ${ACTUAL_REPOSITORY_URL}"
             exit 1
           fi
 
