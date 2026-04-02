@@ -79,4 +79,4 @@ jobs:
 
       - name: Publish to npm
         if: steps.version-check.outputs.already_published == 'false'
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access restricted
