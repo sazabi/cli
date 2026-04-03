@@ -52,6 +52,15 @@ jobs:
             exit 1
           fi
 
+      - name: Verify distSha256 matches dist/index.js
+        run: |
+          MANIFEST_SHA=$(node -p "require('./release-manifest.json').distSha256")
+          ACTUAL_SHA=$(sha256sum dist/index.js | awk '{print $1}')
+          if [ "$MANIFEST_SHA" != "$ACTUAL_SHA" ]; then
+            echo "::error::SHA256 mismatch! Manifest: $MANIFEST_SHA, Actual: $ACTUAL_SHA"
+            exit 1
+          fi
+
       - name: Verify manifest version matches package.json
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
