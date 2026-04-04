@@ -23,5 +23,8 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"
+  },
+  "scripts": {
+    "test": "node test/cli-extra-positionals.test.mjs"
   }
 }
