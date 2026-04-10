@@ -5,7 +5,7 @@ The command-line interface for [Sazabi](https://sazabi.ai).
 ## Installation
 
 ```sh
-npm install -g @sazabiai/cli
+npm install -g @sazabi/cli
 ```
 
 Then run:
@@ -19,7 +19,7 @@ sazabi
 This is the **public release repository** for the Sazabi CLI. It serves as:
 
 - The public-facing landing page for the CLI on GitHub
-- The npm publish source for the `@sazabiai/cli` package
+- The npm publish source for the `@sazabi/cli` package
 
 Source development happens in a private internal monorepo. This repository receives pre-built artifacts via an automated sync workflow. If you're looking for source code, it is not available here — this repo contains only the published distribution.
 
