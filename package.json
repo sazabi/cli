@@ -2,6 +2,7 @@
   "name": "@sazabi/cli",
   "version": "0.2.0",
   "description": "The Sazabi CLI",
+  "type": "module",
   "license": "UNLICENSED",
   "bin": {
     "sazabi": "dist/index.js"
