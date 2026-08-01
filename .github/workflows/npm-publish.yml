@@ -178,14 +178,19 @@ jobs:
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm%3Aregistry.npmjs.org" \
             | node -p "JSON.parse(require('node:fs').readFileSync(0,'utf8')).value")"
 
-          exchanged="$(curl -sS -X POST \
+          # Package-scoped exchange, mirroring npm CLI's lib/utils/oidc.js:
+          # POST /-/npm/v1/oidc/token/exchange/package/<escaped-name> with the
+          # GitHub id_token as the bearer; response carries {token}.
+          escaped_name="${PACKAGE_NAME/\//%2f}"
+          exchange_body="$(curl -sS -X POST \
             -H "Authorization: Bearer ${id_token}" \
             -H "Content-Type: application/json" \
-            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange" \
-            | node -p "JSON.parse(require('node:fs').readFileSync(0,'utf8')).token ?? ''")"
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${escaped_name}")"
+          exchanged="$(node -p "JSON.parse(process.argv[1]).token ?? ''" "$exchange_body" 2>/dev/null || true)"
 
           if [ -z "$exchanged" ]; then
-            echo "::error::OIDC token exchange for dist-tag repoint failed. Repoint manually: npm dist-tag add ${PACKAGE_NAME}@${PACKAGE_VERSION} ${DIST_TAG}"
+            message="$(node -p "JSON.parse(process.argv[1]).message ?? 'no message'" "$exchange_body" 2>/dev/null || echo 'unparseable response')"
+            echo "::error::OIDC token exchange for dist-tag repoint failed (${message}). Repoint manually: npm dist-tag add ${PACKAGE_NAME}@${PACKAGE_VERSION} ${DIST_TAG}"
             exit 1
           fi
 
