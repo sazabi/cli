@@ -1,9 +1,21 @@
 name: Publish to npm
 
+# Channel-aware publish driven by the sazabi/gitops `public-cli` unit:
+#   main         → dist-tag `latest` (production promote; main is the release mirror)
+#   channel/dev  → dist-tag `dev`    (auto-published prerelease per monorepo release-graph merge)
+#   channel/next → dist-tag `next`   (staging promote / soak channel)
+#
+# Publishing uses npm trusted publishing (OIDC) — no npm token exists anywhere.
+# The gitops handler (sazabi/gitops scripts/deploy/public-cli.sh) pushes bundle
+# content to the matching ref and waits for this workflow's conclusion, then
+# verifies the dist-tag on the registry.
+
 on:
   push:
     branches:
       - main
+      - "channel/dev"
+      - "channel/next"
   workflow_dispatch:
 
 concurrency:
@@ -35,17 +47,31 @@ jobs:
           node --version
           npm --version
 
+      - name: Resolve dist-tag from ref
+        id: channel
+        run: |
+          case "$GITHUB_REF_NAME" in
+            main) dist_tag="latest" ;;
+            channel/dev) dist_tag="dev" ;;
+            channel/next) dist_tag="next" ;;
+            *)
+              echo "::error::Unsupported publish ref: $GITHUB_REF_NAME"
+              exit 1
+              ;;
+          esac
+          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+
       - name: Verify dist/index.js exists
         run: |
           if [ ! -f dist/index.js ]; then
-            echo "::error::dist/index.js not found. The monorepo sync must push this file before publishing."
+            echo "::error::dist/index.js not found. The gitops handler must push this file before publishing."
             exit 1
           fi
 
       - name: Verify release-manifest.json exists
         run: |
           if [ ! -f release-manifest.json ]; then
-            echo "::error::release-manifest.json not found. The monorepo sync must push this file before publishing."
+            echo "::error::release-manifest.json not found. The gitops handler must push this file before publishing."
             exit 1
           fi
 
@@ -66,6 +92,26 @@ jobs:
             echo "::error::Version mismatch: package.json ($PKG_VERSION) != release-manifest.json ($MANIFEST_VERSION)"
             exit 1
           fi
+
+      - name: Verify version matches the channel
+        env:
+          DIST_TAG: ${{ steps.channel.outputs.dist_tag }}
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          case "$DIST_TAG" in
+            latest)
+              if [[ "$PKG_VERSION" == *-* ]]; then
+                echo "::error::latest must publish a bare semver, got prerelease $PKG_VERSION"
+                exit 1
+              fi
+              ;;
+            dev|next)
+              if [[ "$PKG_VERSION" != *"-${DIST_TAG}."* ]]; then
+                echo "::error::${DIST_TAG} channel requires a -${DIST_TAG}.* prerelease version, got $PKG_VERSION"
+                exit 1
+              fi
+              ;;
+          esac
 
       - name: Verify package metadata matches this repository
         run: |
@@ -93,11 +139,81 @@ jobs:
 
           if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version 2>/dev/null; then
             echo "already_published=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::${PACKAGE_NAME}@${PACKAGE_VERSION} is already published. Skipping."
+            echo "::notice::${PACKAGE_NAME}@${PACKAGE_VERSION} is already published. Ensuring dist-tag only."
           else
             echo "already_published=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish to npm
         if: steps.version-check.outputs.already_published == 'false'
-        run: npm publish --provenance --access public
+        env:
+          DIST_TAG: ${{ steps.channel.outputs.dist_tag }}
+        run: npm publish --provenance --access public --tag "$DIST_TAG"
+
+      # Rollback path: the version is already on the registry (an earlier SHA was
+      # re-promoted), so only the dist-tag needs to move. npm's OIDC trusted
+      # publishing mints credentials for `npm publish` only, so we exchange the
+      # GitHub OIDC token by hand and use the short-lived credential for
+      # `npm dist-tag add`. If the registry refuses the exchanged credential for
+      # dist-tag writes, fail loudly with the manual repoint command.
+      - name: Repoint dist-tag (already-published version)
+        if: steps.version-check.outputs.already_published == 'true'
+        env:
+          DIST_TAG: ${{ steps.channel.outputs.dist_tag }}
+          PACKAGE_NAME: ${{ steps.version-check.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.version-check.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          current="$(npm view "$PACKAGE_NAME" "dist-tags.${DIST_TAG}" 2>/dev/null || true)"
+          if [ "$current" = "$PACKAGE_VERSION" ]; then
+            echo "dist-tag ${DIST_TAG} already points at ${PACKAGE_VERSION}; nothing to do."
+            exit 0
+          fi
+
+          echo "Repointing ${DIST_TAG}: ${current:-<unset>} -> ${PACKAGE_VERSION}"
+
+          id_token="$(curl -sSf \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm%3Aregistry.npmjs.org" \
+            | node -p "JSON.parse(require('node:fs').readFileSync(0,'utf8')).value")"
+
+          exchanged="$(curl -sS -X POST \
+            -H "Authorization: Bearer ${id_token}" \
+            -H "Content-Type: application/json" \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange" \
+            | node -p "JSON.parse(require('node:fs').readFileSync(0,'utf8')).token ?? ''")"
+
+          if [ -z "$exchanged" ]; then
+            echo "::error::OIDC token exchange for dist-tag repoint failed. Repoint manually: npm dist-tag add ${PACKAGE_NAME}@${PACKAGE_VERSION} ${DIST_TAG}"
+            exit 1
+          fi
+
+          umask 077
+          npmrc="$(mktemp)"
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$exchanged" > "$npmrc"
+          if ! NPM_CONFIG_USERCONFIG="$npmrc" npm dist-tag add "${PACKAGE_NAME}@${PACKAGE_VERSION}" "$DIST_TAG"; then
+            rm -f "$npmrc"
+            echo "::error::Registry refused the exchanged credential for dist-tag writes. Repoint manually: npm dist-tag add ${PACKAGE_NAME}@${PACKAGE_VERSION} ${DIST_TAG}"
+            exit 1
+          fi
+          rm -f "$npmrc"
+
+      - name: Verify dist-tag points at this version
+        env:
+          DIST_TAG: ${{ steps.channel.outputs.dist_tag }}
+          PACKAGE_NAME: ${{ steps.version-check.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.version-check.outputs.version }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            resolved="$(npm view "$PACKAGE_NAME" "dist-tags.${DIST_TAG}" 2>/dev/null || true)"
+            if [ "$resolved" = "$PACKAGE_VERSION" ]; then
+              echo "dist-tag ${DIST_TAG} -> ${PACKAGE_VERSION} confirmed."
+              exit 0
+            fi
+            echo "Attempt ${attempt}: dist-tag ${DIST_TAG} is '${resolved:-<unset>}', expected ${PACKAGE_VERSION}; retrying..."
+            sleep 10
+          done
+          echo "::error::dist-tag ${DIST_TAG} does not point at ${PACKAGE_VERSION} after publish."
+          exit 1
