@@ -151,11 +151,12 @@ jobs:
         run: npm publish --provenance --access public --tag "$DIST_TAG"
 
       # Rollback path: the version is already on the registry (an earlier SHA was
-      # re-promoted), so only the dist-tag needs to move. npm's OIDC trusted
-      # publishing mints credentials for `npm publish` only, so we exchange the
-      # GitHub OIDC token by hand and use the short-lived credential for
-      # `npm dist-tag add`. If the registry refuses the exchanged credential for
-      # dist-tag writes, fail loudly with the manual repoint command.
+      # re-promoted), so only the dist-tag needs to move. As of the 2026-08-01
+      # ENG-5188 drill, the registry REFUSES OIDC-exchanged credentials for
+      # dist-tag writes (trusted publishing is publish-only), so this step is
+      # expected to fail loudly with the manual repoint command until npm
+      # extends OIDC scope or a granular token is provisioned. Automated
+      # rollback is publish-forward: revert on main, bump, promote.
       - name: Repoint dist-tag (already-published version)
         if: steps.version-check.outputs.already_published == 'true'
         env:
@@ -199,7 +200,7 @@ jobs:
           printf '//registry.npmjs.org/:_authToken=%s\n' "$exchanged" > "$npmrc"
           if ! NPM_CONFIG_USERCONFIG="$npmrc" npm dist-tag add "${PACKAGE_NAME}@${PACKAGE_VERSION}" "$DIST_TAG"; then
             rm -f "$npmrc"
-            echo "::error::Registry refused the exchanged credential for dist-tag writes. Repoint manually: npm dist-tag add ${PACKAGE_NAME}@${PACKAGE_VERSION} ${DIST_TAG}"
+            echo "::error::Registry refused the exchanged credential for dist-tag writes (trusted publishing is publish-only). Repoint manually with an npm account that has publish rights: npm dist-tag add ${PACKAGE_NAME}@${PACKAGE_VERSION} ${DIST_TAG} — or roll back publish-forward (revert + bump + promote)."
             exit 1
           fi
           rm -f "$npmrc"
