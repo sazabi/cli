@@ -1,6 +1,6 @@
 {
   "name": "@sazabi/cli",
-  "version": "0.15.1",
+  "version": "0.15.2-next.gfaa1291",
   "description": "The Sazabi CLI",
   "type": "module",
   "license": "UNLICENSED",
