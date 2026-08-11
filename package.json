@@ -1,6 +1,6 @@
 {
   "name": "@sazabi/cli",
-  "version": "0.17.0",
+  "version": "0.19.0",
   "description": "The Sazabi CLI",
   "type": "module",
   "license": "UNLICENSED",
