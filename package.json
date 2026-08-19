@@ -3,7 +3,7 @@
   "version": "0.21.0",
   "description": "The Sazabi CLI",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "bin": {
     "sazabi": "dist/index.js"
   },
