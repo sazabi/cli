@@ -25,4 +25,4 @@ Source development happens in a private internal monorepo. This repository recei
 
 ## License
 
-This software is proprietary. All rights reserved. See [LICENSE](LICENSE) for details.
+[Apache 2.0](./LICENSE)
