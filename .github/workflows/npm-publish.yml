@@ -1,21 +1,23 @@
 name: Publish to npm
 
-# Channel-aware publish driven by the sazabi/gitops `public-cli` unit:
-#   main         → dist-tag `latest` (production promote; main is the release mirror)
-#   channel/dev  → dist-tag `dev`    (auto-published prerelease per monorepo release-graph merge)
-#   channel/next → dist-tag `next`   (staging promote / soak channel)
+# Production-only publish driven by the sazabi/gitops `public-cli` unit:
+#   main → dist-tag `latest` (production promote; main is the release mirror)
+#
+# Dev and staging no longer publish here — they consume the monorepo's
+# per-SHA release-candidate artifact directly (public-prerelease-channel-retirement
+# design). The `if: github.ref == 'refs/heads/main'` job guard below is what
+# actually makes this production-only, not just the push trigger filter: a
+# workflow_dispatch against a recreated channel/* ref must publish nothing.
 #
 # Publishing uses npm trusted publishing (OIDC) — no npm token exists anywhere.
 # The gitops handler (sazabi/gitops scripts/deploy/public-cli.sh) pushes bundle
-# content to the matching ref and waits for this workflow's conclusion, then
-# verifies the dist-tag on the registry.
+# content to main and waits for this workflow's conclusion, then verifies the
+# dist-tag on the registry.
 
 on:
   push:
     branches:
       - main
-      - "channel/dev"
-      - "channel/next"
   workflow_dispatch:
 
 concurrency:
@@ -27,6 +29,7 @@ permissions: {}
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     permissions:
@@ -50,16 +53,11 @@ jobs:
       - name: Resolve dist-tag from ref
         id: channel
         run: |
-          case "$GITHUB_REF_NAME" in
-            main) dist_tag="latest" ;;
-            channel/dev) dist_tag="dev" ;;
-            channel/next) dist_tag="next" ;;
-            *)
-              echo "::error::Unsupported publish ref: $GITHUB_REF_NAME"
-              exit 1
-              ;;
-          esac
-          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Unsupported publish ref: $GITHUB_REF_NAME (production-only; only main publishes)"
+            exit 1
+          fi
+          echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
 
       - name: Verify dist/index.js exists
         run: |
@@ -94,24 +92,12 @@ jobs:
           fi
 
       - name: Verify version matches the channel
-        env:
-          DIST_TAG: ${{ steps.channel.outputs.dist_tag }}
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
-          case "$DIST_TAG" in
-            latest)
-              if [[ "$PKG_VERSION" == *-* ]]; then
-                echo "::error::latest must publish a bare semver, got prerelease $PKG_VERSION"
-                exit 1
-              fi
-              ;;
-            dev|next)
-              if [[ "$PKG_VERSION" != *"-${DIST_TAG}."* ]]; then
-                echo "::error::${DIST_TAG} channel requires a -${DIST_TAG}.* prerelease version, got $PKG_VERSION"
-                exit 1
-              fi
-              ;;
-          esac
+          if [[ "$PKG_VERSION" == *-* ]]; then
+            echo "::error::latest must publish a bare semver, got prerelease $PKG_VERSION"
+            exit 1
+          fi
 
       - name: Verify package metadata matches this repository
         run: |
