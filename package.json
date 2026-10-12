@@ -1,6 +1,6 @@
 {
   "name": "@sazabi/cli",
-  "version": "10.5.3",
+  "version": "10.5.4",
   "description": "The Sazabi CLI",
   "type": "module",
   "license": "Apache-2.0",
