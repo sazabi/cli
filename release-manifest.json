@@ -1,13 +1,14 @@
 {
-  "sourceSha": "c0b65ec402c0ddf993e3c21e926ca136031cc211",
-  "sourceRunId": "41947143003",
-  "builtAt": "2026-11-05T01:15:04Z",
-  "distSha256": "88e2e42bb4cc67c158a04b95f99279d5028d9f5df36acc889ae818bc73c576aa",
-  "baseVersion": "12.2.1",
+  "sourceSha": "1cfd6e96325a6a07148a222679699d3771f8226d",
+  "sourceRunId": "42297474889",
+  "builtAt": "2026-11-06T21:32:15Z",
+  "distSha256": "1057e2f053fe888057ad241f74fdb2fe51c671933f07a3c0db9afb3b261de3ad",
+  "baseVersion": "13.0.0",
   "syncFiles": [
     "dist/index.js",
     "package.json",
     "release-manifest.json"
   ],
-  "version": "12.2.1"
+  "releaseGraphHash": "4302bba9678c7c1a3ed963ac789b8d60746e42bb3ff83f8f6728116dd2db490f",
+  "version": "13.0.0"
 }
